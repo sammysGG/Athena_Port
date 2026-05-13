@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>{{ site_name }} · sign in</title>
+  <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body class="login">
+  <main class="login-wrap">
+    <header>
+      <div class="brand">[{{ site_name|upper }}]</div>
+      <div class="sub">terminal operations console — restricted</div>
+    </header>
+    <form method="post" action="/login" autocomplete="off">
+      <label>
+        <span>operator id</span>
+        <input name="username" type="text" required autocomplete="username" autofocus>
+      </label>
+      <label>
+        <span>passphrase</span>
+        <input name="password" type="password" required autocomplete="current-password">
+      </label>
+      <button type="submit">sign in</button>
+      {% if error == "1" %}
+        <p class="err">invalid credentials</p>
+      {% elif error == "locked" %}
+        <p class="err">too many failed attempts — locked out for 15 minutes</p>
+      {% endif %}
+    </form>
+    <footer>
+      <span>unauthorised access prohibited · all sessions logged</span>
+    </footer>
+  </main>
+</body>
+</html>
