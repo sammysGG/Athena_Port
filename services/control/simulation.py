@@ -493,6 +493,59 @@ class PortSimulation:
             self._emit("info", f"Operator {actor} expedited docking for {ship.name}.")
             return {"ok": True}
 
+    # ── vendor service hooks ────────────────────────────────────────────────
+    # The terminal control software shipped with a remote-diagnostic API that
+    # the vendor used for outage support. These methods are the privileged
+    # operations behind it: they bypass the safety checks the operator UI
+    # enforces (a closed berth must be empty, a ship must be docking before
+    # it can be released, etc).
+
+    async def force_close_berth(self, berth_id: int, actor: str) -> dict:
+        async with self._lock:
+            for berth in self.berths:
+                if berth.id != berth_id:
+                    continue
+                displaced = None
+                if berth.ship_id is not None and berth.ship_id in self.ships:
+                    ship = self.ships[berth.ship_id]
+                    displaced = ship.id
+                    self.missed_imports += ship.imports_remaining
+                    self.missed_exports += ship.exports_remaining
+                    ship.imports_remaining = 0
+                    ship.exports_remaining = 0
+                    self._emit("alarm", f"Berth {berth_id} forced offline while {ship.name} alongside.")
+                    berth.status = "closed"
+                    self._release_ship(ship, reason="forced")
+                else:
+                    berth.status = "closed"
+                self._emit("warn", f"[svc:{actor}] berth {berth_id} forced to closed.")
+                return {"ok": True, "displaced_ship": displaced}
+            return {"ok": False, "error": "no such berth"}
+
+    async def force_release_ship(self, ship_id: str, actor: str) -> dict:
+        async with self._lock:
+            ship = self.ships.get(ship_id)
+            if not ship:
+                return {"ok": False, "error": "no such ship"}
+            if ship.status == "departed":
+                return {"ok": False, "error": "already departed"}
+            self.missed_imports += ship.imports_remaining
+            self.missed_exports += ship.exports_remaining
+            ship.imports_remaining = 0
+            ship.exports_remaining = 0
+            self._emit("alarm", f"[svc:{actor}] {ship.name} released ahead of schedule.")
+            self._release_ship(ship, reason="forced")
+            return {"ok": True}
+
+    async def inject_alarm(self, text: str, level: str, actor: str) -> dict:
+        if level not in ("info", "warn", "alarm"):
+            level = "warn"
+        async with self._lock:
+            key = f"diag-{self.tick}-{self._rng.randint(1000, 9999)}"
+            self.alarms[key] = {"text": text, "since_tick": self.tick, "level": level}
+            self._emit(level, f"[svc:{actor}] {text}")
+            return {"ok": True, "key": key}
+
     # ── snapshot for UI ──────────────────────────────────────────────────────
 
     def snapshot(self) -> dict:

