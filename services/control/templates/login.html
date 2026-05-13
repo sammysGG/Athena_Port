@@ -4,68 +4,72 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <title>AEGIR TOS · {{ site_name }} · Sign-In</title>
+  <title>AEGIR TOS · Sign in</title>
   <link rel="stylesheet" href="/static/css/dashboard.css">
 </head>
 <body class="login">
-  <main class="login-wrap" aria-labelledby="login-brand">
-    <header class="login-header">
-      <div class="login-logo" aria-hidden="true">
-        <svg viewBox="0 0 32 32" width="36" height="36"
-             fill="none" stroke="currentColor"
-             stroke-width="1.6" stroke-linejoin="round">
-          <rect x="3"  y="20" width="11" height="8"/>
-          <rect x="18" y="20" width="11" height="8"/>
-          <rect x="10" y="12" width="12" height="8"/>
-          <rect x="14" y="4"  width="12" height="8"/>
-        </svg>
+  <div class="login-shell">
+    <main class="login-card" aria-labelledby="login-brand">
+      <div class="login-brand">
+        <div class="login-logo" aria-hidden="true">
+          <svg viewBox="0 0 48 48" width="48" height="48" role="img">
+            <rect width="48" height="48" rx="10" fill="#10b981"/>
+            <g fill="none" stroke="#ffffff" stroke-width="2"
+               stroke-linejoin="round" stroke-linecap="round">
+              <rect x="7"  y="29" width="14" height="10"/>
+              <rect x="27" y="29" width="14" height="10"/>
+              <rect x="17" y="19" width="14" height="10"/>
+              <rect x="17" y="9"  width="14" height="10"/>
+            </g>
+          </svg>
+        </div>
+        <div class="login-brand-text">
+          <div id="login-brand" class="login-product">AEGIR TOS</div>
+          <div class="login-tagline">Terminal Operating System</div>
+        </div>
       </div>
-      <div class="login-titles">
-        <div id="login-brand" class="brand">AEGIR&nbsp;TOS</div>
-        <div class="product">Terminal Operating System · v8.4.2-r3</div>
+
+      <h1 class="login-heading">Sign in</h1>
+      <p class="login-sub">Operator console for <strong>{{ site_name }}</strong></p>
+
+      <form method="post" action="/login" autocomplete="off" novalidate>
+        <div class="field">
+          <label for="op-id">Operator ID</label>
+          <input id="op-id" name="username" type="text" required
+                 autocomplete="username" autocapitalize="off"
+                 spellcheck="false" autofocus>
+        </div>
+        <div class="field">
+          <label for="op-pw">Passphrase</label>
+          <input id="op-pw" name="password" type="password" required
+                 autocomplete="current-password">
+        </div>
+
+        {% if error == "1" %}
+          <div class="alert alert-error" role="alert">
+            Authentication failed. Verify your operator ID and passphrase.
+          </div>
+        {% elif error == "locked" %}
+          <div class="alert alert-error" role="alert">
+            Account temporarily locked after repeated failures. Try again in 15 minutes.
+          </div>
+        {% endif %}
+
+        <button class="btn btn-primary" type="submit">Sign in</button>
+      </form>
+
+      <div class="login-notice">
+        Restricted system. All sessions are recorded and audited under the
+        ISPS Code and this facility's security plan. Unauthorised access
+        is prohibited and will be reported.
       </div>
-    </header>
+    </main>
 
-    <dl class="site-block">
-      <dt>Facility</dt>
-      <dd>{{ site_name }}</dd>
-      <dt>Console</dt>
-      <dd>Operator Console &mdash; Restricted</dd>
-    </dl>
-
-    <form method="post" action="/login" autocomplete="off" novalidate>
-      <label>
-        <span>Operator ID</span>
-        <input name="username" type="text" required
-               autocomplete="username" autocapitalize="off"
-               spellcheck="false" autofocus>
-      </label>
-      <label>
-        <span>Passphrase</span>
-        <input name="password" type="password" required
-               autocomplete="current-password">
-      </label>
-      <button type="submit">Authenticate</button>
-      {% if error == "1" %}
-        <p class="err" role="alert">Authentication failed &mdash; verify operator ID and passphrase.</p>
-      {% elif error == "locked" %}
-        <p class="err" role="alert">Account locked &mdash; cool-down 15 min after repeated failures.</p>
-      {% endif %}
-    </form>
-
-    <section class="notice" aria-label="Access notice">
-      <strong>RESTRICTED ACCESS.</strong> This terminal operating system is
-      reserved for authorised port personnel. Sessions are recorded and
-      audited under the ISPS Code and the facility's security plan.
-      Unauthorised access, or attempted access, is an offence and will be
-      reported.
-    </section>
-
-    <footer class="login-footer">
-      <span class="login-foot-l">AEGIR TOS · build 8.4.2-r3</span>
-      <span class="login-foot-r" id="utc-clock" aria-live="off">--:--:-- UTC</span>
+    <footer class="login-meta">
+      <span>AEGIR TOS &middot; v8.4.2-r3</span>
+      <span id="utc-clock" aria-live="off">--:--:-- UTC</span>
     </footer>
-  </main>
+  </div>
   <script src="/static/js/login.js"></script>
 </body>
 </html>
