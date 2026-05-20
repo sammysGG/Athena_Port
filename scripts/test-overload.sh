@@ -47,18 +47,35 @@ fi
 echo "creds  : $USER / $PASS"
 
 # 1. Login — capture the session cookie value from Set-Cookie. We can't use
-#    curl's cookie jar because the cookie is set Secure=true and we're on http.
-SESS=$(curl -sk -X POST "$BASE/login" \
+#    curl's cookie jar reliably because the cookie may be set Secure when
+#    PORT_TRUST_PROXY=1 and we're on http. Capture full headers so we can
+#    diagnose if login is rejected.
+LOGIN_HDRS=$(curl -sk -X POST "$BASE/login" \
   --data-urlencode "username=$USER" \
   --data-urlencode "password=$PASS" \
-  -D - -o /dev/null \
-  | sed -n 's/^Set-Cookie: port_session=\([^;]*\).*/\1/p' | tr -d '\r')
+  -D - -o /dev/null)
+
+SESS=$(printf '%s\n' "$LOGIN_HDRS" \
+  | sed -n 's/^[Ss]et-[Cc]ookie: port_session=\([^;]*\).*/\1/p' | tr -d '\r' | head -n1)
 
 if [ -z "$SESS" ]; then
+  STATUS=$(printf '%s\n' "$LOGIN_HDRS" | sed -n '1s/.*HTTP\/[0-9.]* \([0-9]*\).*/\1/p' | head -n1)
+  LOC=$(printf '%s\n' "$LOGIN_HDRS" | sed -n 's/^[Ll]ocation: //p' | tr -d '\r' | head -n1)
   echo "ERROR: login failed — no session cookie returned" >&2
-  echo "  tried: $USER / $PASS" >&2
-  echo "  hint : if you changed .env, recreate the container:" >&2
-  echo "         docker compose up -d --force-recreate control" >&2
+  echo "  tried   : $USER / $PASS" >&2
+  echo "  status  : ${STATUS:-?}" >&2
+  echo "  location: ${LOC:-(none)}" >&2
+  case "$LOC" in
+    */login\?error=locked*)
+      echo "  cause   : rate-limited. Reset with: docker compose restart control" >&2 ;;
+    */login\?error=1*)
+      echo "  cause   : server rejected username/password — re-check /_health" >&2 ;;
+    "")
+      echo "  cause   : no Location header — server may not be running login route" >&2 ;;
+    *)
+      echo "  cause   : unexpected redirect — full headers below:" >&2
+      printf '%s\n' "$LOGIN_HDRS" | sed 's/^/    /' >&2 ;;
+  esac
   exit 1
 fi
 echo "session: ${SESS:0:24}…"
