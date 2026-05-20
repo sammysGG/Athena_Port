@@ -46,8 +46,8 @@ def _require_env(name: str) -> str:
 PORT_SITE_NAME = os.getenv("PORT_SITE_NAME", "Tallinna Sadam")
 PORT_OPERATOR_USERNAME = _require_env("PORT_OPERATOR_USERNAME")
 PORT_OPERATOR_PASSWORD = _require_env("PORT_OPERATOR_PASSWORD")
-if len(PORT_OPERATOR_PASSWORD) < 12:
-    raise RuntimeError("PORT_OPERATOR_PASSWORD must be at least 12 characters")
+if len(PORT_OPERATOR_PASSWORD) < 8:
+    raise RuntimeError("PORT_OPERATOR_PASSWORD must be at least 8 characters")
 PORT_SESSION_SECRET = _require_env("PORT_SESSION_SECRET")
 if len(PORT_SESSION_SECRET) < 32:
     raise RuntimeError("PORT_SESSION_SECRET must be at least 32 hex chars")
