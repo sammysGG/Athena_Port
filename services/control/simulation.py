@@ -86,6 +86,12 @@ class Ship:
     export_types_orig: dict = field(default_factory=dict)
     import_types: dict = field(default_factory=dict)
     export_types: dict = field(default_factory=dict)
+    # capacity / damage
+    capacity: int = 0               # max exports the ship is rated for
+    load_count: int = 0             # exports currently loaded (legit + overload)
+    overload: int = 0               # containers loaded past capacity
+    damage: int = 0                 # damage points (each overload move adds 1)
+    damaged: bool = False           # true once damage > 0 — UI marker
 
 
 @dataclass
@@ -94,6 +100,10 @@ class Event:
     ts: float
     level: str                      # info | warn | alarm
     text: str
+
+
+DAMAGE_SLOW_THRESHOLD = 1        # any damage doubles crane cycle on that ship
+DAMAGE_FAIL_THRESHOLD = 10       # >= this on departure → ship is condemned
 
 
 class PortSimulation:
@@ -135,8 +145,10 @@ class PortSimulation:
         self.score_exports: int = 0
         self.missed_imports: int = 0
         self.missed_exports: int = 0
+        self.damaged_exports: int = 0   # exports loaded past capacity (penalty)
         self.ships_completed: int = 0
         self.ships_failed: int = 0
+        self.ships_condemned: int = 0   # failed specifically from overload damage
 
         self.events: deque[Event] = deque(maxlen=event_size)
         self.alarms: dict[str, dict] = {}   # key -> {text, since_tick, level}
@@ -235,6 +247,7 @@ class PortSimulation:
             export_types_orig=dict(export_types),
             import_types=dict(import_types),
             export_types=dict(export_types),
+            capacity=exports,
         )
         self.ships[sid] = ship
         self.queue.append(sid)
@@ -307,6 +320,7 @@ class PortSimulation:
                         # exports_remaining and yard_exports were both
                         # decremented at cycle start. Credit the score.
                         self.score_exports += 1
+                        ship.load_count += 1
                         self._moves_this_tick += 1
                         crane.last_action = f"loaded export → {ship.name}"
                     if ship.imports_remaining == 0 and ship.exports_remaining == 0 and ship.status == "working":
@@ -355,6 +369,13 @@ class PortSimulation:
         # Small per-cycle jitter so the cranes don't beat in lockstep.
         jitter = self._rng.randint(-1, 1)
         cycle = max(2, self.crane_cycle_ticks + jitter)
+        # Damaged ships handle slower — overload shifts hull, twists fittings,
+        # cranes have to ease lifts. Doubles the cycle on the affected berth.
+        berth = self.berths[crane.berth_id - 1]
+        if berth.ship_id and berth.ship_id in self.ships:
+            ship = self.ships[berth.ship_id]
+            if ship.damaged:
+                cycle *= 2
         crane.status = "busy"
         crane.work_dir = direction
         crane.work_type = container_type
@@ -409,9 +430,20 @@ class PortSimulation:
             if berth.ship_id == ship.id:
                 berth.ship_id = None
                 berth.status = "open" if berth.status != "closed" else "closed"
+        # A heavily damaged ship can't depart clean even if its manifest is
+        # worked — overload damage condemns it on inspection at the seawall.
+        if reason == "completed" and ship.damage >= DAMAGE_FAIL_THRESHOLD:
+            reason = "condemned"
         if reason == "completed":
             self.ships_completed += 1
             self._emit("info", f"{ship.name} departed clean. +{ship.total_imports + ship.total_exports} moves credited.")
+        elif reason == "condemned":
+            self.ships_failed += 1
+            self.ships_condemned += 1
+            self._emit(
+                "alarm",
+                f"{ship.name} CONDEMNED on departure — damage {ship.damage}, overload {ship.overload}.",
+            )
         else:
             self.ships_failed += 1
         ship.status = "departed"
@@ -537,6 +569,60 @@ class PortSimulation:
             self._release_ship(ship, reason="forced")
             return {"ok": True}
 
+    async def force_overload_ship(self, ship_id: str, count: int, actor: str) -> dict:
+        """Force-load N extra exports onto a ship past its rated capacity.
+
+        Each overload move:
+          * pulls from yard_exports if any are staged (otherwise materialises
+            ballast — the diag API doesn't care)
+          * does NOT credit score_exports; instead increments damaged_exports
+          * adds 1 damage to the ship
+          * raises a sticky 'ship-overload-{id}' alarm on the first hit
+        """
+        try:
+            count = int(count)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "count must be int"}
+        if count <= 0:
+            return {"ok": False, "error": "count must be positive"}
+        async with self._lock:
+            ship = self.ships.get(ship_id)
+            if not ship:
+                return {"ok": False, "error": "no such ship"}
+            if ship.status in ("departed", "departing"):
+                return {"ok": False, "error": f"ship is {ship.status}"}
+            applied = 0
+            for _ in range(count):
+                # Take from yard if possible, else just spawn ballast.
+                if self.yard_exports > 0:
+                    self.yard_exports -= 1
+                ship.load_count += 1
+                ship.overload += 1
+                ship.damage += 1
+                self.damaged_exports += 1
+                applied += 1
+            ship.damaged = True
+            key = f"ship-overload-{ship.id}"
+            self.alarms[key] = {
+                "text": f"⚠ OVERLOAD — {ship.name} loaded past capacity (dmg {ship.damage})",
+                "since_tick": self.tick,
+                "level": "alarm",
+            }
+            self._emit(
+                "alarm",
+                f"[svc:{actor}] OVERLOADING {ship.name}: +{applied} past capacity "
+                f"({ship.load_count}/{ship.capacity}, dmg {ship.damage}).",
+            )
+            return {
+                "ok": True,
+                "ship_id": ship.id,
+                "applied": applied,
+                "damage": ship.damage,
+                "overload": ship.overload,
+                "capacity": ship.capacity,
+                "load_count": ship.load_count,
+            }
+
     async def inject_alarm(self, text: str, level: str, actor: str) -> dict:
         if level not in ("info", "warn", "alarm"):
             level = "warn"
@@ -560,8 +646,10 @@ class PortSimulation:
                 "exports": self.score_exports,
                 "missed_imports": self.missed_imports,
                 "missed_exports": self.missed_exports,
+                "damaged_exports": self.damaged_exports,
                 "ships_completed": self.ships_completed,
                 "ships_failed": self.ships_failed,
+                "ships_condemned": self.ships_condemned,
             },
             "throughput": {
                 "moves_per_min": moves_per_min,
@@ -597,6 +685,12 @@ class PortSimulation:
                     "export_types": dict(s.export_types),
                     "arrived_tick": s.arrived_tick,
                     "deadline_tick": s.deadline_tick,
+                    "capacity": s.capacity,
+                    "load_count": s.load_count,
+                    "overload": s.overload,
+                    "damage": s.damage,
+                    "damaged": s.damaged,
+                    "condemned": s.damage >= DAMAGE_FAIL_THRESHOLD,
                 }
                 for s in active_ships
             ],

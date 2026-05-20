@@ -349,6 +349,13 @@ async def svc_exec(
         text = str(payload.get("text", "diagnostic alarm"))[:200]
         level = str(payload.get("level", "warn"))
         return JSONResponse(await sim.inject_alarm(text, level, actor=actor))
+    if action == "overload_ship":
+        ship_id = str(payload.get("ship_id", ""))
+        try:
+            count = int(payload.get("count", 1))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="count must be int")
+        return JSONResponse(await sim.force_overload_ship(ship_id, count, actor=actor))
     raise HTTPException(status_code=400, detail="unknown action")
 
 

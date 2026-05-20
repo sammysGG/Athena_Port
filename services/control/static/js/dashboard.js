@@ -19,20 +19,29 @@
     root.innerHTML = '';
     for (const b of snap.berths) {
       const row = document.createElement('div');
-      row.className = `berth ${b.status}`;
+      const shipHere = b.ship_id ? ships.get(b.ship_id) : null;
+      const damagedHere = shipHere && shipHere.damaged;
+      row.className = `berth ${b.status}${damagedHere ? ' has-overload' : ''}`;
       const id = document.createElement('div');
       id.className = 'berth-id';
-      id.textContent = `B${b.id}`;
+      if (b.status === 'closed') {
+        id.innerHTML = `<span class="redx">✕</span> B${b.id}`;
+      } else {
+        id.textContent = `B${b.id}`;
+      }
       const info = document.createElement('div');
       info.className = 'berth-info';
       const top = document.createElement('div');
       if (b.ship_id) {
-        const ship = ships.get(b.ship_id);
+        const ship = shipHere;
+        const ovr = ship && ship.damaged
+          ? ` <span class="overload-badge${ship.condemned ? ' is-condemned' : ''}">⚠ OVERLOAD ${ship.damage}</span>`
+          : '';
         top.innerHTML = ship
-          ? `<span class="ship">${escapeHtml(ship.name)}</span> <span class="muted small">${ship.status}</span>`
+          ? `<span class="ship">${escapeHtml(ship.name)}</span> <span class="muted small">${ship.status}</span>${ovr}`
           : `<span class="ship">${escapeHtml(b.ship_id)}</span>`;
       } else if (b.status === 'closed') {
-        top.innerHTML = '<span class="empty">— closed (maintenance) —</span>';
+        top.innerHTML = '<span class="empty redx-line">✕ closed (maintenance)</span>';
       } else {
         top.innerHTML = '<span class="empty">— open · awaiting ship —</span>';
       }
@@ -65,13 +74,24 @@
       tr.dataset.shipId = s.id;
       const dl = s.ticks_to_deadline;
       const dlClass = dl < 0 ? 'bad' : dl < 60 ? 'warn' : '';
+      // Damage state — drives row tint + OVERLOAD badge next to the name
+      let rowCls = '';
+      if (s.condemned) rowCls = 'ship-condemned';
+      else if (s.damaged) rowCls = 'ship-damaged';
+      tr.className = rowCls;
+      const badge = s.damaged
+        ? ` <span class="overload-badge${s.condemned ? ' is-condemned' : ''}" title="overload ${s.overload}, damage ${s.damage}">⚠ OVERLOAD ${s.damage}</span>`
+        : '';
+      const expCell = s.load_count > s.capacity
+        ? `<td class="bad" title="loaded ${s.load_count} on a ${s.capacity}-rated ship">${s.exports_remaining}/${s.total_exports}</td>`
+        : `<td>${s.exports_remaining}/${s.total_exports}</td>`;
       tr.innerHTML =
         `<td>${escapeHtml(s.id)}</td>` +
-        `<td title="${escapeHtml(s.name)}">${escapeHtml(s.name)}</td>` +
+        `<td title="${escapeHtml(s.name)}">${escapeHtml(s.name)}${badge}</td>` +
         `<td>${escapeHtml(s.status)}</td>` +
         `<td>${s.berth_id ? 'B' + s.berth_id : '—'}</td>` +
         `<td>${s.imports_remaining}/${s.total_imports}</td>` +
-        `<td>${s.exports_remaining}/${s.total_exports}</td>` +
+        expCell +
         `<td class="${dlClass}">${dl}t</td>`;
       tr.addEventListener('click', () => {
         selectedShipId = s.id;
@@ -195,8 +215,16 @@
       }
       for (const a of snap.alarms) {
         const li = document.createElement('li');
+        const level = (a.level || 'warn').toLowerCase();
+        li.className = `alarm-${level}`;
+        if (level === 'alarm') li.classList.add('is-loud');
         const txt = document.createElement('span');
-        txt.textContent = a.text;
+        // High-severity alarms get a leading red X marker so blocked /
+        // unknown-error states are unmistakeable at a glance.
+        const marker = level === 'alarm'
+          ? '✕ '
+          : level === 'warn' ? '⚠ ' : '';
+        txt.textContent = marker + a.text;
         li.appendChild(txt);
         if (root === drawerRoot) {
           const btn = document.createElement('button');
@@ -537,15 +565,23 @@
 
     snap.berths.forEach((b, idx) => {
       const x = startX + idx * berthW;
-      // berth slot frame on quay edge
+      const closed = b.status === 'closed';
+      // berth slot frame on quay edge — red dashed + X overlay when closed
       svgEl('rect', {
         x: x + 6, y: 222, width: berthW - 12, height: 16,
-        fill: 'none', stroke: b.status === 'closed' ? '#64748b' : '#059669',
-        'stroke-dasharray': b.status === 'closed' ? '4 3' : '0', 'stroke-width': 1,
+        fill: closed ? '#fee2e2' : 'none',
+        stroke: closed ? '#dc2626' : '#059669',
+        'stroke-dasharray': closed ? '4 3' : '0', 'stroke-width': closed ? 2 : 1,
       }, root);
-      svgText(root, x + berthW / 2, 260, `Berth ${b.id}${b.status === 'closed' ? ' · closed' : ''}`, {
-        'text-anchor': 'middle', fill: '#0072CE', 'font-size': 11,
-      });
+      if (closed) {
+        // Big red X across the berth slot — unmistakeable "blocked" marker
+        const x1 = x + 8, x2 = x + berthW - 8, y1 = 224, y2 = 236;
+        svgEl('line', { x1, y1, x2, y2, stroke: '#dc2626', 'stroke-width': 2.5 }, root);
+        svgEl('line', { x1, y1: y2, x2, y2: y1, stroke: '#dc2626', 'stroke-width': 2.5 }, root);
+      }
+      svgText(root, x + berthW / 2, 260,
+        `Berth ${b.id}${closed ? ' · ✕ CLOSED' : ''}`,
+        { 'text-anchor': 'middle', fill: closed ? '#dc2626' : '#0072CE', 'font-size': 11, 'font-weight': closed ? '700' : '400' });
 
       // ship at berth
       let ship = null;
@@ -604,9 +640,22 @@
   }
 
   function drawDockedShip(root, x, y, w, h, ship) {
-    const stroke = '#004F99';
-    const fill = '#bfdbfe';
+    const damaged = !!ship.damaged;
+    const stroke = damaged ? '#991b1b' : '#004F99';
+    const fill   = damaged ? '#fecaca' : '#bfdbfe';
     drawShipIcon(root, x, y, w, h, fill, stroke);
+    if (damaged) {
+      // Pulsing red border + OVERLOAD banner above the hull
+      svgEl('rect', {
+        x: x - 4, y: y - 6, width: w + 8, height: h + 12,
+        fill: 'none', stroke: '#dc2626', 'stroke-width': 3,
+        'stroke-dasharray': '6 4',
+        class: 'overload-frame',
+      }, root);
+      svgText(root, x + w / 2, y - 22,
+        `⚠ OVERLOAD ${ship.load_count}/${ship.capacity} · DMG ${ship.damage}${ship.condemned ? ' · CONDEMNED' : ''}`,
+        { 'text-anchor': 'middle', fill: '#dc2626', 'font-size': 12, 'font-weight': '700' });
+    }
 
     // Build a flat list of containers by type from the *remaining* manifest
     // (both imports and exports). Render them as a single stacked deck so
@@ -781,6 +830,13 @@
       { label: 'Exports', val: `${ship.total_exports - ship.exports_remaining}/${ship.total_exports}`, color: '#059669' },
       { label: 'Deadline', val: `${ship.ticks_to_deadline}t`, color: ship.ticks_to_deadline < 0 ? '#dc2626' : ship.ticks_to_deadline < 60 ? '#f59e0b' : '#0072CE' },
     ];
+    if (ship.damaged) {
+      stats.push({
+        label: ship.condemned ? 'CONDEMNED' : 'DAMAGE',
+        val: `${ship.damage}  (+${ship.overload})`,
+        color: '#dc2626',
+      });
+    }
     stats.forEach((s, i) => {
       const bx = MAP_W - 660 + i * 220;
       svgEl('rect', { x: bx, y: 30, width: 200, height: 70, fill: '#ffffff', stroke: '#e5e7eb', rx: 4 }, root);
