@@ -13,7 +13,7 @@ services:
     tmpfs:
       - /tmp
     environment:
-      PORT_SITE_NAME: ${PORT_SITE_NAME:-Harbor Operations}
+      PORT_SITE_NAME: ${PORT_SITE_NAME:-Tallinna Sadam}
       PORT_OPERATOR_USERNAME: ${PORT_OPERATOR_USERNAME}
       PORT_OPERATOR_PASSWORD: ${PORT_OPERATOR_PASSWORD}
       PORT_SESSION_SECRET: ${PORT_SESSION_SECRET}

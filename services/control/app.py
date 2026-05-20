@@ -43,7 +43,7 @@ def _require_env(name: str) -> str:
     return value
 
 
-PORT_SITE_NAME = os.getenv("PORT_SITE_NAME", "Harbour Operations")
+PORT_SITE_NAME = os.getenv("PORT_SITE_NAME", "Tallinna Sadam")
 PORT_OPERATOR_USERNAME = _require_env("PORT_OPERATOR_USERNAME")
 PORT_OPERATOR_PASSWORD = _require_env("PORT_OPERATOR_PASSWORD")
 if len(PORT_OPERATOR_PASSWORD) < 12:

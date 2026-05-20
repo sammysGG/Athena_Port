@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <title>AEGIR TOS · Sign in</title>
+  <title>Logi sisse — Tallinna Sadam</title>
   <link rel="stylesheet" href="/static/css/dashboard.css">
 </head>
 <body class="login">
@@ -12,61 +12,56 @@
     <main class="login-card" aria-labelledby="login-brand">
       <div class="login-brand">
         <div class="login-logo" aria-hidden="true">
-          <svg viewBox="0 0 48 48" width="48" height="48" role="img">
-            <rect width="48" height="48" rx="10" fill="#10b981"/>
-            <g fill="none" stroke="#ffffff" stroke-width="2"
-               stroke-linejoin="round" stroke-linecap="round">
-              <rect x="7"  y="29" width="14" height="10"/>
-              <rect x="27" y="29" width="14" height="10"/>
-              <rect x="17" y="19" width="14" height="10"/>
-              <rect x="17" y="9"  width="14" height="10"/>
-            </g>
+          <svg viewBox="0 0 40 40" width="40" height="40" role="img" aria-label="Estonian flag">
+            <rect width="40" height="40" rx="8" fill="#ffffff" stroke="#d4d4d8" stroke-width="0.5"/>
+            <rect y="2" width="40" height="12" fill="#0072CE"/>
+            <rect y="14" width="40" height="12" fill="#000000"/>
+            <rect y="26" width="40" height="12" fill="#ffffff"/>
           </svg>
         </div>
         <div class="login-brand-text">
-          <div id="login-brand" class="login-product">AEGIR TOS</div>
-          <div class="login-tagline">Terminal Operating System</div>
+          <div id="login-brand" class="login-product">Tallinna Sadam</div>
+          <div class="login-tagline">Port of Tallinn — Operaator</div>
         </div>
       </div>
 
-      <h1 class="login-heading">Sign in</h1>
-      <p class="login-sub">Operator console for <strong>{{ site_name }}</strong></p>
+      <h1 class="login-heading">Logi sisse</h1>
+      <p class="login-sub">jätkamaks teenusesse <strong>{{ site_name }}</strong></p>
 
       <form method="post" action="/login" autocomplete="off" novalidate>
         <div class="field">
-          <label for="op-id">Operator ID</label>
+          <label for="op-id">Kasutajanimi · Username</label>
           <input id="op-id" name="username" type="text" required
                  autocomplete="username" autocapitalize="off"
                  spellcheck="false" autofocus>
         </div>
         <div class="field">
-          <label for="op-pw">Passphrase</label>
+          <label for="op-pw">Parool · Password</label>
           <input id="op-pw" name="password" type="password" required
                  autocomplete="current-password">
         </div>
 
         {% if error == "1" %}
           <div class="alert alert-error" role="alert">
-            Authentication failed. Verify your operator ID and passphrase.
+            Vale kasutajanimi või parool. Invalid username or password.
           </div>
         {% elif error == "locked" %}
           <div class="alert alert-error" role="alert">
-            Account temporarily locked after repeated failures. Try again in 15 minutes.
+            Liiga palju katseid. Proovi 15 minuti pärast uuesti.
           </div>
         {% endif %}
 
-        <button class="btn btn-primary" type="submit">Sign in</button>
+        <button class="btn btn-primary" type="submit">Logi sisse</button>
       </form>
 
       <div class="login-notice">
-        Restricted system. All sessions are recorded and audited under the
-        ISPS Code and this facility's security plan. Unauthorised access
-        is prohibited and will be reported.
+        Volitatud juurdepääs. Süsteemi tegevus salvestatakse. ·
+        Authorized access only. Activity on this system is logged.
       </div>
     </main>
 
     <footer class="login-meta">
-      <span>AEGIR TOS &middot; v8.4.2-r3</span>
+      <span>Tallinna Sadam · Operaatori konsool 8.4.2</span>
       <span id="utc-clock" aria-live="off">--:--:-- UTC</span>
     </footer>
   </div>

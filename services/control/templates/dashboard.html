@@ -4,15 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <title>{{ site_name }} · operations</title>
+  <title>{{ site_name }} — Operations</title>
   <link rel="stylesheet" href="/static/css/dashboard.css">
   <meta name="csrf-token" content="{{ csrf_token }}">
 </head>
 <body class="dash">
+  <div class="ee-flag" aria-hidden="true">
+    <span class="ee-flag-blue"></span>
+    <span class="ee-flag-black"></span>
+    <span class="ee-flag-white"></span>
+  </div>
   <header class="topbar">
     <div class="brand-wrap">
-      <span class="brand">{{ site_name|upper }}</span>
-      <span class="brand-sub">terminal operations · live</span>
+      <span class="brand">{{ site_name }}</span>
+      <span class="brand-sub">Port of Tallinn — Operatsioonid</span>
     </div>
     <div class="status-pill" id="status-pill" title="connection status">
       <span class="dot"></span><span class="t">connecting</span>
@@ -20,15 +25,15 @@
     <div class="topbar-right">
       <span id="clock" class="clock">--:--:--</span>
       <span class="sep">│</span>
-      <span class="who muted">{{ username }}@console</span>
-      <button id="console-toggle" class="btn-ghost" type="button">CONSOLE</button>
-      <a class="btn-ghost" href="/logout">LOG OUT</a>
+      <span class="who muted">{{ username }}</span>
+      <button id="console-toggle" class="btn-ghost" type="button">Console</button>
+      <a class="btn-ghost" href="/logout">Log out</a>
     </div>
   </header>
 
   <section class="hero" aria-label="key metrics">
     <div class="kpi kpi-primary">
-      <span class="kpi-label">TOTAL CONTAINERS MOVED</span>
+      <span class="kpi-label">Containers moved</span>
       <div class="kpi-row">
         <span id="hero-total" class="kpi-value">0</span>
         <span id="hero-delta" class="kpi-delta">+0/min</span>
@@ -36,22 +41,22 @@
       <svg id="hero-spark" class="hero-spark" viewBox="0 0 400 50" preserveAspectRatio="none"></svg>
     </div>
     <div class="kpi">
-      <span class="kpi-label">IMPORTS</span>
+      <span class="kpi-label">Imports</span>
       <span id="hero-imp" class="kpi-value imp">0</span>
-      <span class="kpi-sub muted" id="hero-imp-sub">0 staged · 0 missed</span>
+      <span class="kpi-sub muted" id="hero-imp-sub">0 staged, 0 missed</span>
     </div>
     <div class="kpi">
-      <span class="kpi-label">EXPORTS</span>
+      <span class="kpi-label">Exports</span>
       <span id="hero-exp" class="kpi-value exp">0</span>
-      <span class="kpi-sub muted" id="hero-exp-sub">0 staged · 0 missed</span>
+      <span class="kpi-sub muted" id="hero-exp-sub">0 staged, 0 missed</span>
     </div>
     <div class="kpi">
-      <span class="kpi-label">SHIPS</span>
+      <span class="kpi-label">Ships</span>
       <span id="hero-ships" class="kpi-value">0</span>
-      <span class="kpi-sub muted" id="hero-ships-sub">0 docked · 0 queued</span>
+      <span class="kpi-sub muted" id="hero-ships-sub">0 docked, 0 queued</span>
     </div>
     <div class="kpi">
-      <span class="kpi-label">UPTIME · TICK</span>
+      <span class="kpi-label">Uptime</span>
       <span id="hero-uptime" class="kpi-value mono">00:00</span>
       <span class="kpi-sub muted" id="hero-tick">t0</span>
     </div>
@@ -61,10 +66,10 @@
     <section class="panel" id="panel-view">
       <div class="view-head">
         <nav class="view-tabs" role="tablist">
-          <button class="view-tab is-active" data-view="overview" role="tab">OVERVIEW</button>
-          <button class="view-tab" data-view="ship" role="tab">SHIP DETAIL</button>
-          <button class="view-tab" data-view="yard" role="tab">YARD</button>
-          <button class="view-tab" data-view="throughput" role="tab">THROUGHPUT</button>
+          <button class="view-tab is-active" data-view="overview" role="tab">Overview</button>
+          <button class="view-tab" data-view="ship" role="tab">Ship detail</button>
+          <button class="view-tab" data-view="yard" role="tab">Yard</button>
+          <button class="view-tab" data-view="throughput" role="tab">Throughput</button>
         </nav>
         <div class="view-toolbar" id="view-toolbar"></div>
       </div>
@@ -76,12 +81,12 @@
 
     <aside class="rail">
       <section class="panel rail-panel" id="panel-berths">
-        <h2>BERTHS &amp; CRANES</h2>
+        <h2>Berths &amp; cranes</h2>
         <div class="body" id="berths"></div>
       </section>
 
       <section class="panel rail-panel" id="panel-ships">
-        <h2>SHIPS <span class="muted small">· queue <strong id="queue-len">0</strong></span></h2>
+        <h2>Ships <span class="muted small">queue <strong id="queue-len">0</strong></span></h2>
         <div class="body">
           <table class="ships">
             <thead><tr>
@@ -94,68 +99,63 @@
       </section>
 
       <section class="panel rail-panel" id="panel-alarms">
-        <h2>ALARMS</h2>
+        <h2>Alarms</h2>
         <ul id="alarms"></ul>
       </section>
     </aside>
   </main>
 
   <footer class="ticker" aria-label="event ticker">
-    <span class="ticker-tag">▣ LIVE</span>
+    <span class="ticker-tag">Live</span>
     <div class="ticker-viewport">
       <div class="ticker-track" id="ticker-track"></div>
     </div>
   </footer>
 
-  <!-- Console drawer: hidden by default, slides in from the right when the
-       CONSOLE button is clicked. Holds the operator command bay for cases
-       where the operator needs to intervene (e.g. red team disruption). -->
   <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
   <aside class="drawer" id="console-drawer" hidden aria-hidden="true">
     <header class="drawer-head">
-      <span class="drawer-title">OPERATOR CONSOLE</span>
-      <button id="console-close" class="btn-ghost" type="button">CLOSE ✕</button>
+      <span class="drawer-title">Console</span>
+      <button id="console-close" class="btn-ghost" type="button">Close</button>
     </header>
     <p class="drawer-blurb muted">
-      Manual overrides for incident response. In normal operation the
-      terminal runs itself — only intervene if alarms or red-team activity
-      demand it.
+      Manual overrides for when the terminal needs an operator in the loop.
     </p>
     <div class="cmd-stack">
       <fieldset>
-        <legend>reassign crane</legend>
+        <legend>Reassign crane</legend>
         <div class="cmd-line">
           <select id="cmd-crane"></select>
           <span class="arrow">→</span>
           <select id="cmd-crane-berth"></select>
-          <button data-cmd="reassign">execute</button>
+          <button data-cmd="reassign">Run</button>
         </div>
       </fieldset>
       <fieldset>
-        <legend>berth status</legend>
+        <legend>Berth status</legend>
         <div class="cmd-line">
           <select id="cmd-berth"></select>
           <select id="cmd-berth-status">
-            <option value="open">open</option>
-            <option value="closed">closed (maintenance)</option>
+            <option value="open">Open</option>
+            <option value="closed">Closed (maintenance)</option>
           </select>
-          <button data-cmd="berth">execute</button>
+          <button data-cmd="berth">Run</button>
         </div>
       </fieldset>
       <fieldset>
-        <legend>expedite docking</legend>
+        <legend>Expedite docking</legend>
         <div class="cmd-line">
           <select id="cmd-ship"></select>
-          <button data-cmd="expedite">execute</button>
+          <button data-cmd="expedite">Run</button>
         </div>
       </fieldset>
     </div>
     <div id="cmd-result" class="cmd-result"></div>
 
-    <h3 class="drawer-h3">ACTIVE ALARMS</h3>
+    <h3 class="drawer-h3">Active alarms</h3>
     <ul id="drawer-alarms" class="drawer-alarms"></ul>
 
-    <h3 class="drawer-h3">RECENT EVENTS</h3>
+    <h3 class="drawer-h3">Recent events</h3>
     <ol id="drawer-events" class="drawer-events"></ol>
   </aside>
 
