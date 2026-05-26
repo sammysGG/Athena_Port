@@ -1,0 +1,271 @@
+- name: Check if docker is already installed
+  ansible.builtin.command: docker --version
+  register: docker_check
+  changed_when: false
+  failed_when: false
+
+- name: Install docker prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+    state: present
+    update_cache: yes
+  when: docker_check.rc != 0
+
+- name: Create apt keyrings dir
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+  when: docker_check.rc != 0
+
+- name: Add docker GPG key
+  ansible.builtin.shell:
+    cmd: |
+      curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+      chmod a+r /etc/apt/keyrings/docker.gpg
+    creates: /etc/apt/keyrings/docker.gpg
+  when: docker_check.rc != 0
+
+- name: Add docker apt repo
+  ansible.builtin.shell:
+    cmd: |
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
+    creates: /etc/apt/sources.list.d/docker.list
+  when: docker_check.rc != 0
+
+- name: Install docker engine + compose plugin
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+    update_cache: yes
+  when: docker_check.rc != 0
+
+- name: Enable and start docker
+  ansible.builtin.systemd:
+    name: docker
+    enabled: yes
+    state: started
+
+- name: Add user to docker group
+  ansible.builtin.user:
+    name: user
+    groups: docker
+    append: yes
+
+- name: Install git
+  ansible.builtin.apt:
+    name: git
+    state: present
+    update_cache: yes
+
+- name: Clone port-range repo
+  ansible.builtin.git:
+    repo: https://github.com/sammysGG/Athena_Port.git
+    dest: /opt/port-range
+    version: main
+    force: yes
+
+- name: Fix repo ownership
+  ansible.builtin.file:
+    path: /opt/port-range
+    state: directory
+    owner: root
+    group: root
+    recurse: yes
+
+- name: Make scripts executable
+  ansible.builtin.file:
+    path: /opt/port-range/scripts/generate-secrets.sh
+    mode: '0755'
+
+- name: Check if .env already exists
+  ansible.builtin.stat:
+    path: /opt/port-range/.env
+  register: env_file
+
+- name: Generate .env with random secrets
+  ansible.builtin.shell:
+    cmd: ./scripts/generate-secrets.sh
+    chdir: /opt/port-range
+  when: not env_file.stat.exists
+
+- name: Bind to localhost only (nginx fronts it)
+  ansible.builtin.lineinfile:
+    path: /opt/port-range/.env
+    regexp: '^PORT_BIND_ADDRESS='
+    line: 'PORT_BIND_ADDRESS=127.0.0.1'
+
+- name: Enable proxy trust (nginx in front)
+  ansible.builtin.lineinfile:
+    path: /opt/port-range/.env
+    regexp: '^PORT_TRUST_PROXY='
+    line: 'PORT_TRUST_PROXY=1'
+
+- name: Ensure .env perms are 600
+  ansible.builtin.file:
+    path: /opt/port-range/.env
+    mode: '0600'
+    owner: root
+    group: root
+
+- name: Allow HTTP/HTTPS through ufw
+  ansible.builtin.command: "ufw allow {{ item }}/tcp"
+  register: ufw_result
+  changed_when: "'added' in ufw_result.stdout or 'updated' in ufw_result.stdout"
+  failed_when: false
+  loop:
+    - 80
+    - 443
+
+- name: Build and start container
+  ansible.builtin.command:
+    cmd: docker compose up -d --build --force-recreate
+    chdir: /opt/port-range
+
+- name: Verify health endpoint
+  ansible.builtin.uri:
+    url: http://127.0.0.1:18090/health
+    status_code: 200
+  register: health
+  retries: 10
+  delay: 3
+  until: health.status == 200
+
+- name: Install nginx
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+    update_cache: yes
+
+- name: Create TLS cert directory
+  ansible.builtin.file:
+    path: /etc/ssl/range
+    state: directory
+    mode: '0700'
+
+- name: Generate self-signed TLS cert
+  ansible.builtin.shell:
+    cmd: >
+      openssl req -x509 -nodes -sha256 -days 825 -newkey rsa:2048
+      -keyout /etc/ssl/range/key.pem -out /etc/ssl/range/cert.pem
+      -subj "/C=UK/CN={{ hostname }}.{{ domain }}"
+      -addext "subjectAltName=DNS:{{ hostname }}.{{ domain }}"
+    executable: /bin/bash
+    creates: /etc/ssl/range/cert.pem
+
+- name: Configure nginx TLS reverse proxy
+  ansible.builtin.copy:
+    dest: /etc/nginx/sites-available/port-range.conf
+    content: |
+      server {
+          listen 80;
+          server_name {{ hostname }}.{{ domain }};
+          return 301 https://$host$request_uri;
+      }
+      server {
+          listen 443 ssl;
+          server_name {{ hostname }}.{{ domain }};
+
+          ssl_certificate     /etc/ssl/range/cert.pem;
+          ssl_certificate_key /etc/ssl/range/key.pem;
+
+          location / {
+              proxy_pass http://127.0.0.1:18090;
+              proxy_http_version 1.1;
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $scheme;
+              proxy_set_header Upgrade $http_upgrade;
+              proxy_set_header Connection "upgrade";
+          }
+      }
+
+- name: Enable the port-range nginx site
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/port-range.conf
+    dest: /etc/nginx/sites-enabled/port-range.conf
+    state: link
+
+- name: Disable the default nginx site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+
+- name: Reload nginx
+  ansible.builtin.systemd:
+    name: nginx
+    state: reloaded
+    enabled: yes
+
+- name: Verify HTTPS is serving through nginx
+  ansible.builtin.uri:
+    url: https://127.0.0.1/health
+    validate_certs: no
+    headers:
+      Host: "{{ hostname }}.{{ domain }}"
+    status_code: 200
+  register: https_health
+  retries: 5
+  delay: 2
+  until: https_health.status == 200
+
+- name: Install boot-time update script
+  ansible.builtin.copy:
+    dest: /opt/port-range/scripts/update-on-boot.sh
+    mode: '0755'
+    owner: root
+    group: root
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      cd /opt/port-range
+      git fetch --quiet origin main
+      LOCAL=$(git rev-parse HEAD)
+      REMOTE=$(git rev-parse origin/main)
+      if [ "$LOCAL" != "$REMOTE" ]; then
+        echo "updates found, pulling and rebuilding"
+        git reset --hard origin/main
+        docker compose up -d --build
+      else
+        echo "no updates, starting existing containers"
+        docker compose up -d
+      fi
+
+- name: Install port-range-update systemd unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/port-range-update.service
+    mode: '0644'
+    owner: root
+    group: root
+    content: |
+      [Unit]
+      Description=Pull port-range updates from git and (re)start containers
+      After=network-online.target docker.service
+      Wants=network-online.target
+      Requires=docker.service
+
+      [Service]
+      Type=oneshot
+      WorkingDirectory=/opt/port-range
+      ExecStart=/opt/port-range/scripts/update-on-boot.sh
+      StandardOutput=journal
+      StandardError=journal
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Enable port-range-update on boot
+  ansible.builtin.systemd:
+    name: port-range-update.service
+    enabled: yes
+    daemon_reload: yes
