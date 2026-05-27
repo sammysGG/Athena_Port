@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Pull the latest from git and rebuild + restart the control container.
+# Pull the latest from git, reinstall deps, and restart the control service.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 git pull --ff-only
 
-docker compose build control
-docker compose up -d control
+.venv/bin/pip install -r services/control/requirements.txt
 
-docker compose ps
+sudo systemctl restart port-range.service
+sudo systemctl status --no-pager port-range.service

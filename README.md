@@ -58,7 +58,7 @@ in the event feed with the operator's username.
 
 ```
 port-range/
-├── docker-compose.yml         # single hardened container
+├── deploy.yml                 # Ansible role: systemd + nginx provisioning
 ├── .env.example
 ├── scripts/
 │   └── generate-secrets.sh    # generates random session + operator secrets
@@ -68,24 +68,25 @@ port-range/
         ├── simulation.py      # tick loop, ships, berths, cranes, gate, score
         ├── templates/         # login.html, dashboard.html (Jinja2)
         ├── static/            # dashboard.css, dashboard.js (no CDN)
-        ├── Dockerfile
         └── requirements.txt
 ```
 
-The container runs as a non-root user with a read-only filesystem, no
-capabilities, and `no-new-privileges`. It publishes to `127.0.0.1:18090`
-by default, so the only public path in is whatever reverse proxy or
-tunnel you put in front of it.
+The app is served by uvicorn under a `port-range.service` systemd unit,
+running as the unprivileged `www-data` user and bound to `127.0.0.1:18090`.
+nginx terminates TLS in front of it, so the only public path in is whatever
+reverse proxy or tunnel you put before nginx. On a range box this is all
+provisioned by `deploy.yml`.
 
 ## Running
 
 ```bash
 cd /var/www/port-range
-./scripts/generate-secrets.sh        # writes .env with random secrets
-$EDITOR .env                          # set PORT_OPERATOR_USERNAME at minimum
-docker compose build
-docker compose up -d
-curl http://127.0.0.1:18090/health    # → {"status":"ok"}
+./scripts/generate-secrets.sh                 # writes .env with random secrets
+$EDITOR .env                                   # set PORT_OPERATOR_USERNAME at minimum
+python3 -m venv .venv && .venv/bin/pip install -r services/control/requirements.txt
+cd services/control && env $(grep -v '^#' ../../.env | xargs) \
+  ../../.venv/bin/uvicorn app:app --host 127.0.0.1 --port 18090
+curl http://127.0.0.1:18090/health             # → {"status":"ok"}
 ```
 
 The generated `.env` contains the operator password in cleartext at mode
@@ -178,7 +179,7 @@ exercises.
 ## Resetting
 
 ```bash
-docker compose down && docker compose up -d
+sudo systemctl restart port-range.service
 ```
 
 The simulation has no on-disk state — restarting wipes the scoreboard,

@@ -67,7 +67,7 @@ if [ -z "$SESS" ]; then
   echo "  location: ${LOC:-(none)}" >&2
   case "$LOC" in
     */login\?error=locked*)
-      echo "  cause   : rate-limited. Reset with: docker compose restart control" >&2 ;;
+      echo "  cause   : rate-limited. Reset with: sudo systemctl restart port-range.service" >&2 ;;
     */login\?error=1*)
       echo "  cause   : server rejected username/password — re-check /_health" >&2 ;;
     "")
