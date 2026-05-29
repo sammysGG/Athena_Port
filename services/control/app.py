@@ -52,7 +52,7 @@ PORT_SESSION_SECRET = _require_env("PORT_SESSION_SECRET")
 if len(PORT_SESSION_SECRET) < 32:
     raise RuntimeError("PORT_SESSION_SECRET must be at least 32 hex chars")
 
-PORT_TICK_SECONDS = float(os.getenv("PORT_TICK_SECONDS", "1.0"))
+PORT_TICK_SECONDS = float(os.getenv("PORT_TICK_SECONDS", "3.0"))
 PORT_BERTHS = int(os.getenv("PORT_BERTHS", "4"))
 PORT_CRANES_PER_BERTH = int(os.getenv("PORT_CRANES_PER_BERTH", "2"))
 PORT_CRANE_CYCLE_TICKS = int(os.getenv("PORT_CRANE_CYCLE_TICKS", "5"))
