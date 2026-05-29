@@ -5,3 +5,6 @@ __pycache__/
 
 # Red-team answer key / offensive tooling — never ship to a student-facing repo.
 scripts/red-team-demo.py
+
+# README is instructor/scenario notes — never ship to exercise targets
+README.md
