@@ -310,6 +310,12 @@ async def cmd_expedite(payload: dict, user: dict = Depends(require_csrf)) -> JSO
     return JSONResponse(await sim.expedite_ship(ship_id, actor=user["u"]))
 
 
+@app.post("/api/command/repair-ship")
+async def cmd_repair_ship(payload: dict, user: dict = Depends(require_csrf)) -> JSONResponse:
+    ship_id = str(payload.get("ship_id", ""))
+    return JSONResponse(await sim.repair_ship(ship_id, actor=user["u"]))
+
+
 # ── vendor remote-support API ──────────────────────────────────────────────
 # Legacy diagnostic interface shipped by the terminal control vendor for
 # outage support. Token-authenticated, bypasses operator login. Left

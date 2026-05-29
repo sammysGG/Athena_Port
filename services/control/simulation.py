@@ -525,6 +525,35 @@ class PortSimulation:
             self._emit("info", f"Operator {actor} expedited docking for {ship.name}.")
             return {"ok": True}
 
+    async def repair_ship(self, ship_id: str, actor: str) -> dict:
+        """Operator action: clear overload damage on a ship.
+
+        Resets damage/overload/damaged flags, removes the sticky overload
+        alarm, and logs the repair. The container manifest itself is not
+        touched — already-loaded containers stay loaded. The point of the
+        action is to certify the ship as safe to depart, which lets cranes
+        resume full speed and prevents condemnation on departure.
+        """
+        async with self._lock:
+            ship = self.ships.get(ship_id)
+            if not ship:
+                return {"ok": False, "error": "no such ship"}
+            if not ship.damaged and ship.damage == 0 and ship.overload == 0:
+                return {"ok": False, "error": "ship is not damaged"}
+            prev_damage = ship.damage
+            prev_overload = ship.overload
+            ship.damage = 0
+            ship.overload = 0
+            ship.damaged = False
+            self.alarms.pop(f"ship-overload-{ship.id}", None)
+            self._emit(
+                "info",
+                f"Operator {actor} certified {ship.name} safe — repaired "
+                f"(cleared dmg {prev_damage}, overload {prev_overload}).",
+            )
+            return {"ok": True, "ship_id": ship.id,
+                    "cleared_damage": prev_damage, "cleared_overload": prev_overload}
+
     # ── vendor service hooks ────────────────────────────────────────────────
     # The terminal control software shipped with a remote-diagnostic API that
     # the vendor used for outage support. These methods are the privileged
